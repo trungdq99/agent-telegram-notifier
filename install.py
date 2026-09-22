@@ -38,7 +38,7 @@ GEMINI_HOOKS_PATH = os.path.expanduser("~/.gemini/config/hooks.json")
 ANTIGRAVITY_NAMESPACE = "agent-telegram-notifier"
 
 def get_antigravity_hook_def():
-    stop_cmd = f'if [ -f "{NOTIFY_SH}" ]; then /bin/sh "{NOTIFY_SH}" --agent "antigravity" --event "Stop"; else printf \'%s\\n\' \'{{"decision":""}}\'; {{ command -p cat 2>/dev/null || cat; }} >/dev/null 2>&1 || :; fi'
+    stop_cmd = f'if [ -f "{NOTIFY_SH}" ]; then /bin/sh "{NOTIFY_SH}" --agent "antigravity" --event "Stop"; else printf \'%s\\n\' \'{{}}\'; {{ command -p cat 2>/dev/null || cat; }} >/dev/null 2>&1 || :; fi'
     tool_cmd = f'if [ -f "{NOTIFY_SH}" ]; then /bin/sh "{NOTIFY_SH}" --agent "antigravity" --event "PreToolUse"; else printf \'%s\\n\' \'{{"decision":"allow"}}\'; {{ command -p cat 2>/dev/null || cat; }} >/dev/null 2>&1 || :; fi'
     return {
         "Stop": [

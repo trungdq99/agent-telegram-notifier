@@ -454,7 +454,7 @@ def finish(code=0):
     if CURRENT_IS_TOOL:
         print('{"decision": "allow"}')
     else:
-        print('{"decision": ""}')
+        print('{}')
     sys.exit(code)
 
 def main():
@@ -653,5 +653,5 @@ if __name__ == "__main__":
         if CURRENT_IS_TOOL or any("tool" in arg.lower() for arg in sys.argv):
             print('{"decision": "allow"}')
         else:
-            print('{"decision": ""}')
+            print('{}')
         sys.exit(0)
