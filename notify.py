@@ -21,6 +21,11 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
+try:
+    import fcntl
+except ImportError:
+    fcntl = None
+
 # Setup logging
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 LOG_FILE = os.path.join(SCRIPT_DIR, "agent_notifier.log")
@@ -275,29 +280,43 @@ def extract_task_from_transcript(transcript_path):
     return ""
 
 def check_and_set_debounce(cache_dir, key, min_seconds=3):
-    """Prevent spamming multiple notifications for the same event in quick succession."""
+    """Prevent spamming multiple notifications for the same event in quick succession with atomic file locking."""
     cache_file = os.path.join(cache_dir, "last_notify.json")
+    lock_file = os.path.join(cache_dir, "notify.lock")
     now = time.time()
     try:
         os.makedirs(cache_dir, exist_ok=True)
-        data = {}
-        if os.path.exists(cache_file):
-            try:
-                with open(cache_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-            except Exception:
-                data = {}
-        
-        last_time = data.get(key, 0)
-        if (now - last_time) < min_seconds:
-            return False  # Debounced
-            
-        data[key] = now
-        # Evict old entries (> 24h)
-        data = {k: v for k, v in data.items() if (now - v) < 86400}
-        with open(cache_file, "w", encoding="utf-8") as f:
-            json.dump(data, f)
-        return True
+        lock_fd = None
+        if fcntl:
+            lock_fd = open(lock_file, "w")
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)
+
+        try:
+            data = {}
+            if os.path.exists(cache_file):
+                try:
+                    with open(cache_file, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                except Exception:
+                    data = {}
+
+            last_time = data.get(key, 0)
+            if (now - last_time) < min_seconds:
+                return False  # Debounced
+
+            data[key] = now
+            # Evict old entries (> 24h)
+            data = {k: v for k, v in data.items() if (now - v) < 86400}
+            with open(cache_file, "w", encoding="utf-8") as f:
+                json.dump(data, f)
+            return True
+        finally:
+            if fcntl and lock_fd:
+                try:
+                    fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                    lock_fd.close()
+                except Exception:
+                    pass
     except Exception as e:
         logging.warning(f"Debounce error: {e}")
         return True
@@ -573,6 +592,11 @@ def main():
 
     # Handle Task Completed
     else:
+        debounce_key = f"done:{agent}:{project_name}:{worktree_name or branch_name or 'main'}"
+        if not check_and_set_debounce(cache_dir, debounce_key, min_seconds=min_interval):
+            logging.info(f"Skipping debounced notification for key: {debounce_key}")
+            finish(0)
+
         # Extract task
         task_text = args.task
         if not task_text:
@@ -588,11 +612,6 @@ def main():
                         transcript_path = auto_path
             if transcript_path:
                 task_text = extract_task_from_transcript(transcript_path)
-
-        debounce_key = f"done:{agent}:{project_name}:{worktree_name or branch_name or 'main'}"
-        if not check_and_set_debounce(cache_dir, debounce_key, min_seconds=min_interval):
-            logging.info(f"Skipping debounced notification for key: {debounce_key}")
-            finish(0)
 
         msg_html = build_task_completed_message(
             agent_display=agent_display,

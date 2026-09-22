@@ -426,7 +426,14 @@ def show_status():
     for agent, path in ORCA_TARGET_HOOKS.items():
         exists = os.path.exists(path)
         installed = is_orca_hook_installed(path) if exists else False
-        status_str = "✅ ĐÃ CÀI ĐẶT" if installed else ("❌ CHƯA CÀI ĐẶT" if exists else "⚠️ KHÔNG TÌM THẤY FILE")
+        if agent in ("antigravity", "claude", "grok") and not installed:
+            status_str = "⏭️  BỎ QUA (Đã dùng Native Hook)"
+        elif installed:
+            status_str = "✅ ĐÃ CÀI ĐẶT"
+        elif exists:
+            status_str = "❌ CHƯA CÀI ĐẶT"
+        else:
+            status_str = "⚠️ KHÔNG TÌM THẤY FILE"
         print(f"  {agent.title():<15}: {status_str} ({os.path.basename(path)})")
     print("=" * 65 + "\n")
 
@@ -452,9 +459,20 @@ def main():
         install_claude_native()
         install_grok_native()
 
-        print("\n⏳ Đang cài đặt Orca Relay hooks vào ~/.orca/agent-hooks/...")
-        for agent, path in ORCA_TARGET_HOOKS.items():
-            install_orca_hook(agent, path)
+        print("\n⏳ Cấu hình Orca Relay hooks (~/.orca/agent-hooks/)...")
+        # Các agent đã có Native Hooks (Antigravity, Claude, Grok) đã gọi notify.sh trực tiếp
+        # từ cấu hình gốc của chúng. Ta gỡ bỏ đoạn hook trong ~/.orca/agent-hooks/*.sh của chúng
+        # để tránh bị gọi 2 lần (duplicate notifications).
+        for agent in ("antigravity", "claude", "grok"):
+            path = ORCA_TARGET_HOOKS.get(agent)
+            if path and os.path.exists(path):
+                uninstall_orca_hook(agent, path)
+
+        # Cài đặt Orca relay hook cho các agent còn lại chưa có Native Hook (cursor, codex, gemini)
+        for agent in ("cursor", "codex", "gemini"):
+            path = ORCA_TARGET_HOOKS.get(agent)
+            if path:
+                install_orca_hook(agent, path)
 
         print("\n✅ Đã hoàn tất cài đặt hooks.")
         show_status()
