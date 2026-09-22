@@ -8,8 +8,10 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PYTHON_BIN=""
 if [ -x "/opt/homebrew/bin/python3" ]; then
     PYTHON_BIN="/opt/homebrew/bin/python3"
-elif [ -x "/Users/trungshin/miniconda3/envs/mcp_servers/bin/python" ]; then
-    PYTHON_BIN="/Users/trungshin/miniconda3/envs/mcp_servers/bin/python"
+elif [ -n "$HOME" ] && [ -x "$HOME/miniconda3/envs/mcp_servers/bin/python" ]; then
+    PYTHON_BIN="$HOME/miniconda3/envs/mcp_servers/bin/python"
+elif [ -n "$HOME" ] && [ -x "$HOME/miniconda3/bin/python3" ]; then
+    PYTHON_BIN="$HOME/miniconda3/bin/python3"
 elif command -v python3 >/dev/null 2>&1; then
     PYTHON_BIN="$(command -v python3)"
 else

@@ -447,9 +447,14 @@ def build_permission_message(agent_display, project_name, is_worktree, worktree_
     lines.append(f"⏰ <b>Thời gian:</b> {now_str}")
     return "\n".join(lines)
 
+CURRENT_IS_TOOL = any("tool" in arg.lower() for arg in sys.argv)
+
 def finish(code=0):
     """Output valid JSON response for agent hooks and exit."""
-    print('{"decision": ""}')
+    if CURRENT_IS_TOOL:
+        print('{"decision": "allow"}')
+    else:
+        print('{"decision": ""}')
     sys.exit(code)
 
 def main():
@@ -529,6 +534,9 @@ def main():
             event = payload.get("event")
 
     cid = payload.get("conversationId", "")
+    global CURRENT_IS_TOOL
+    if "tool" in (event or "").lower():
+        CURRENT_IS_TOOL = True
     logging.info(f"Received hook: agent='{agent}', event='{event}', cid='{cid}'")
 
     # 1. Check if this is a subagent completion -> IGNORE if subagent!
@@ -642,5 +650,8 @@ if __name__ == "__main__":
         main()
     except Exception as err:
         logging.exception(f"Unhandled fatal error in notify.py: {err}")
-        print('{"decision": ""}')
+        if CURRENT_IS_TOOL or any("tool" in arg.lower() for arg in sys.argv):
+            print('{"decision": "allow"}')
+        else:
+            print('{"decision": ""}')
         sys.exit(0)
