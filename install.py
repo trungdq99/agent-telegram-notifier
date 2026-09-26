@@ -406,6 +406,35 @@ def uninstall_orca_hook(agent_name, filepath):
 # -------------------------------------------------------------
 # Summary & CLI
 # -------------------------------------------------------------
+SKILL_DIR = os.path.join(SCRIPT_DIR, "skills", "send-to-telegram")
+AGENTS_SKILL_TARGET = os.path.expanduser("~/.agents/skills/send-to-telegram")
+GEMINI_SKILL_TARGET = os.path.expanduser("~/.gemini/config/skills/send-to-telegram")
+
+def install_skills():
+    if not os.path.exists(SKILL_DIR):
+        return
+    for target in (AGENTS_SKILL_TARGET, GEMINI_SKILL_TARGET):
+        try:
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            if os.path.islink(target) or os.path.exists(target):
+                try:
+                    os.unlink(target)
+                except Exception:
+                    pass
+            os.symlink(SKILL_DIR, target)
+            print(f"  ✅ Đã cài đặt Skill send-to-telegram: {target}")
+        except Exception as e:
+            print(f"  ⚠️  Không thể tạo symlink skill tại {target}: {e}")
+
+def uninstall_skills():
+    for target in (AGENTS_SKILL_TARGET, GEMINI_SKILL_TARGET):
+        if os.path.islink(target) or os.path.exists(target):
+            try:
+                os.unlink(target)
+                print(f"  🗑️  Đã gỡ bỏ Skill send-to-telegram: {target}")
+            except Exception as e:
+                print(f"  ⚠️  Lỗi gỡ skill tại {target}: {e}")
+
 def show_status():
     print("\n" + "=" * 65)
     print("🌟 1. AGENT NATIVE HOOKS (Bền vững - Không bị Orca ghi đè khi restart)")
@@ -435,20 +464,27 @@ def show_status():
         else:
             status_str = "⚠️ KHÔNG TÌM THẤY FILE"
         print(f"  {agent.title():<15}: {status_str} ({os.path.basename(path)})")
+
+    print("\n" + "=" * 65)
+    print("✨ 3. AGENT SKILLS")
+    print("=" * 65)
+    skill_stat = "✅ ĐÃ CÀI ĐẶT" if (os.path.exists(AGENTS_SKILL_TARGET) or os.path.exists(GEMINI_SKILL_TARGET)) else "❌ CHƯA CÀI ĐẶT"
+    print(f"  send-to-telegram: {skill_stat} (~/.agents/skills & ~/.gemini/config/skills)")
     print("=" * 65 + "\n")
 
 def main():
     parser = argparse.ArgumentParser(description="Install/Uninstall Telegram Notifier hooks for AI agents.")
-    parser.add_argument("--install", action="store_true", help="Install hooks into both native agents and Orca")
-    parser.add_argument("--uninstall", action="store_true", help="Uninstall all hooks")
+    parser.add_argument("--install", action="store_true", help="Install hooks and skills into agents and Orca")
+    parser.add_argument("--uninstall", action="store_true", help="Uninstall all hooks and skills")
     parser.add_argument("--status", action="store_true", help="Show current installation status")
     args = parser.parse_args()
 
     if args.uninstall:
-        print("\n⏳ Đang gỡ bỏ Telegram Notifier hooks...")
+        print("\n⏳ Đang gỡ bỏ Telegram Notifier hooks & skills...")
         uninstall_antigravity_native()
         uninstall_claude_native()
         uninstall_grok_native()
+        uninstall_skills()
         for agent, path in ORCA_TARGET_HOOKS.items():
             uninstall_orca_hook(agent, path)
         print("\n✅ Đã hoàn tất gỡ bỏ hooks.")
@@ -459,22 +495,21 @@ def main():
         install_claude_native()
         install_grok_native()
 
+        print("\n⏳ Đang cài đặt Agent Skills (send-to-telegram)...")
+        install_skills()
+
         print("\n⏳ Cấu hình Orca Relay hooks (~/.orca/agent-hooks/)...")
-        # Các agent đã có Native Hooks (Antigravity, Claude, Grok) đã gọi notify.sh trực tiếp
-        # từ cấu hình gốc của chúng. Ta gỡ bỏ đoạn hook trong ~/.orca/agent-hooks/*.sh của chúng
-        # để tránh bị gọi 2 lần (duplicate notifications).
         for agent in ("antigravity", "claude", "grok"):
             path = ORCA_TARGET_HOOKS.get(agent)
             if path and os.path.exists(path):
                 uninstall_orca_hook(agent, path)
 
-        # Cài đặt Orca relay hook cho các agent còn lại chưa có Native Hook (cursor, codex, gemini)
         for agent in ("cursor", "codex", "gemini"):
             path = ORCA_TARGET_HOOKS.get(agent)
             if path:
                 install_orca_hook(agent, path)
 
-        print("\n✅ Đã hoàn tất cài đặt hooks.")
+        print("\n✅ Đã hoàn tất cài đặt hooks & skills.")
         show_status()
     else:
         show_status()

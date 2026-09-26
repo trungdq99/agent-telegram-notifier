@@ -13,6 +13,7 @@ Designed to hook directly into each AI agent's **native configuration lifecycle*
 - 🌿 **First-Class Git Worktree Support**: Differentiates between main branch repositories and active worktrees (e.g. `Worktree: feat-auth-module (branch feat/auth-module)` vs `Branch: main (main branch)`).
 - 📝 **Intelligent Task Extraction**: Reads session transcripts and hook payloads to extract and summarize the exact user prompt or task the agent just worked on.
 - ❓ **Interactive Question Alerts**: Triggers high-priority notifications when an agent calls interactive tools like `ask_question` with selectable options, so you know immediately when your input is needed.
+- 📸 **Send-to-Telegram Agent Skill**: Equips agents to take macOS/Android screenshots or locate files/images in the project and dispatch them directly to Telegram on demand via `/bin/sh notify.sh --send-photo ...` or `--send-file ...`.
 - 🛡️ **Subagent & Anti-Spam Filtering**: Intelligently ignores background subagents to prevent false notifications; includes a configurable debounce timer (default 3 seconds) to suppress rapid duplicate events.
 - ⚡ **Zero-Dependency & Non-Blocking**: Built entirely with the Python 3 standard library (`urllib`, `json`, `subprocess`, `html`). No `pip install` required. Hook execution finishes in < 0.5s.
 
@@ -22,16 +23,19 @@ Designed to hook directly into each AI agent's **native configuration lifecycle*
 
 ```text
 agent-telegram-notifier/
-├── .env                  # Telegram Bot credentials (ignored by git)
-├── .env.example          # Sample environment configuration template
-├── notify.py             # Core engine (git detection, transcript parser, Telegram API)
-├── notify.sh             # Shell wrapper for agent hooks
-├── test_notification.py  # Standalone test script to verify Telegram credentials
-├── install.py            # Automated installer for native agent hooks
-├── install.sh            # Quick CLI wrapper for install.py
-├── agent_notifier.log    # Local activity log (ignored by git)
-├── README.md             # English documentation (this file)
-└── README-vi.md          # Vietnamese documentation
+├── .env                          # Telegram Bot credentials (ignored by git)
+├── .env.example                  # Sample environment configuration template
+├── notify.py                     # Core engine (git detection, transcript parser, Telegram API & Files)
+├── notify.sh                     # Shell wrapper for agent hooks
+├── test_notification.py          # Standalone test script to verify Telegram credentials
+├── install.py                    # Automated installer for native agent hooks & skills
+├── install.sh                    # Quick CLI wrapper for install.py
+├── skills/
+│   └── send-to-telegram/
+│       └── SKILL.md              # Skill for screenshot capture, file lookup & Telegram dispatch
+├── agent_notifier.log            # Local activity log (ignored by git)
+├── README.md                     # English documentation (this file)
+└── README-vi.md                  # Vietnamese documentation
 ```
 
 ---

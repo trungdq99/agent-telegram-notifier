@@ -18,6 +18,9 @@ import logging
 import urllib.request
 import urllib.parse
 import subprocess
+import re
+import uuid
+import mimetypes
 from datetime import datetime
 from pathlib import Path
 
@@ -354,6 +357,81 @@ def send_telegram(bot_token, chat_id, message_html, thread_id=None, timeout=6.0)
     except Exception as e:
         return False, str(e)
 
+def build_multipart(fields, files):
+    """
+    Build multipart/form-data payload in pure Python standard library.
+    fields: dict {name: str_value}
+    files: list of tuples (field_name, file_path)
+    Returns: (content_type_header, body_bytes)
+    """
+    boundary = f"----TelegramBoundary{uuid.uuid4().hex}"
+    parts = []
+    for k, v in fields.items():
+        if v is not None and v != "":
+            parts.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"{k}\"\r\n\r\n{v}\r\n".encode("utf-8"))
+    for field_name, file_path in files:
+        filename = os.path.basename(file_path)
+        mime = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        with open(file_path, "rb") as f:
+            data = f.read()
+        parts.append(
+            f"--{boundary}\r\nContent-Disposition: form-data; name=\"{field_name}\"; filename=\"{filename}\"\r\n"
+            f"Content-Type: {mime}\r\n\r\n".encode("utf-8")
+        )
+        parts.append(data)
+        parts.append(b"\r\n")
+    parts.append(f"--{boundary}--\r\n".encode("utf-8"))
+    return f"multipart/form-data; boundary={boundary}", b"".join(parts)
+
+def send_telegram_file(bot_token, chat_id, file_path, file_type="document", caption="", thread_id=None, timeout=15.0):
+    """Send photo or document via Telegram Bot API using urllib (zero dependencies)."""
+    if not bot_token or not chat_id:
+        return False, "Thiếu TELEGRAM_BOT_TOKEN hoặc TELEGRAM_CHAT_ID trong .env"
+    if not os.path.exists(file_path):
+        return False, f"File không tồn tại: {file_path}"
+
+    lower_path = file_path.lower()
+    file_size = os.path.getsize(file_path)
+    # Telegram photo constraints: must be photo format and <= 10MB
+    if file_type == "photo":
+        if lower_path.endswith(".svg") or file_size > 10 * 1024 * 1024:
+            file_type = "document"
+
+    endpoint = "sendPhoto" if file_type == "photo" else "sendDocument"
+    field_file = "photo" if file_type == "photo" else "document"
+    url = f"https://api.telegram.org/bot{bot_token}/{endpoint}"
+
+    fields = {
+        "chat_id": str(chat_id),
+        "parse_mode": "HTML"
+    }
+    if thread_id:
+        try:
+            fields["message_thread_id"] = str(int(thread_id))
+        except ValueError:
+            pass
+
+    if caption:
+        if len(caption) > 1020:
+            caption = caption[:1017] + "..."
+        fields["caption"] = caption
+
+    try:
+        content_type, body = build_multipart(fields, [(field_file, file_path)])
+        req = urllib.request.Request(
+            url,
+            data=body,
+            headers={"Content-Type": content_type, "User-Agent": "AgentTelegramNotifier/1.0"}
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            body = resp.read().decode("utf-8")
+            res_json = json.loads(body)
+            if res_json.get("ok"):
+                return True, "Success"
+            return False, res_json.get("description", "Unknown Telegram API error")
+    except Exception as e:
+        return False, str(e)
+
 def format_agent_name(name):
     """Normalize agent names with readable titles and emojis."""
     raw = (name or "Unknown").strip().lower()
@@ -467,6 +545,9 @@ def main():
     parser.add_argument("--test", action="store_true", help="Send a test notification immediately")
     parser.add_argument("--dry-run", action="store_true", help="Print message without sending")
     parser.add_argument("--env-file", help="Path to custom .env file")
+    parser.add_argument("--send-photo", help="Send a photo directly via Telegram")
+    parser.add_argument("--send-file", "--send-doc", dest="send_file", help="Send a document or file directly via Telegram")
+    parser.add_argument("--caption", default="", help="Caption for photo or file")
     args = parser.parse_args()
 
     config = load_env(args.env_file)
@@ -474,6 +555,32 @@ def main():
     chat_id = config.get("TELEGRAM_CHAT_ID")
     thread_id = config.get("TELEGRAM_THREAD_ID")
     min_interval = float(config.get("DEBOUNCE_SECONDS", "3"))
+
+    # Direct photo sending mode
+    if args.send_photo:
+        caption = args.caption
+        if not caption:
+            caption = f"🖼️ <b>{html.escape(os.path.basename(args.send_photo))}</b>"
+        ok, res = send_telegram_file(bot_token, chat_id, args.send_photo, file_type="photo", caption=caption, thread_id=thread_id)
+        if ok:
+            print(f"✅ Gửi ảnh thành công: {args.send_photo}")
+            sys.exit(0)
+        else:
+            print(f"❌ Gửi ảnh thất bại: {res}")
+            sys.exit(1)
+
+    # Direct document sending mode
+    if args.send_file:
+        caption = args.caption
+        if not caption:
+            caption = f"📄 <b>{html.escape(os.path.basename(args.send_file))}</b>"
+        ok, res = send_telegram_file(bot_token, chat_id, args.send_file, file_type="document", caption=caption, thread_id=thread_id)
+        if ok:
+            print(f"✅ Gửi file thành công: {args.send_file}")
+            sys.exit(0)
+        else:
+            print(f"❌ Gửi file thất bại: {res}")
+            sys.exit(1)
 
     # Test mode
     if args.test:
@@ -605,21 +712,22 @@ def main():
             logging.info(f"Skipping debounced notification for key: {debounce_key}")
             finish(0)
 
+        # Resolve transcript path
+        transcript_path = payload.get("transcript_path") or payload.get("transcriptPath")
+        if not transcript_path and payload.get("providerSession"):
+            transcript_path = payload.get("providerSession", {}).get("transcriptPath")
+        if not transcript_path and "antigravity" in str(agent).lower():
+            if cid:
+                auto_path = os.path.expanduser(f"~/.gemini/antigravity-cli/brain/{cid}/.system_generated/logs/transcript.jsonl")
+                if os.path.exists(auto_path):
+                    transcript_path = auto_path
+
         # Extract task
         task_text = args.task
         if not task_text:
             task_text = payload.get("task") or payload.get("prompt") or payload.get("query") or payload.get("description")
-        if not task_text:
-            transcript_path = payload.get("transcript_path") or payload.get("transcriptPath")
-            if not transcript_path and payload.get("providerSession"):
-                transcript_path = payload.get("providerSession", {}).get("transcriptPath")
-            if not transcript_path and "antigravity" in str(agent).lower():
-                if cid:
-                    auto_path = os.path.expanduser(f"~/.gemini/antigravity-cli/brain/{cid}/.system_generated/logs/transcript.jsonl")
-                    if os.path.exists(auto_path):
-                        transcript_path = auto_path
-            if transcript_path:
-                task_text = extract_task_from_transcript(transcript_path)
+        if not task_text and transcript_path:
+            task_text = extract_task_from_transcript(transcript_path)
 
         msg_html = build_task_completed_message(
             agent_display=agent_display,

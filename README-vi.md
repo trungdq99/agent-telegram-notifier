@@ -13,6 +13,7 @@ Công cụ được thiết kế để đăng ký trực tiếp vào **vòng đ�
 - 🌿 **Hỗ Trợ Toàn Diện Git Worktree**: Phân biệt rõ ràng giữa làm việc tại nhánh chính và làm việc trong Git Worktree (ví dụ: `Worktree: feat-auth-module (nhánh feat/auth-module)` so với `Nhánh: main (nhánh chính)`).
 - 📝 **Tự Động Đọc Tóm Tắt Task**: Tự động phân tích transcript và payload của phiên làm việc để trích xuất câu lệnh/task gần nhất mà bạn vừa giao cho agent.
 - ❓ **Thông Báo Khi Agent Hỏi / Cần Lựa Chọn**: Báo ngay về điện thoại khi agent gọi các công cụ tương tác như `ask_question`, liệt kê rõ nội dung câu hỏi và danh sách các phương án để bạn kịp thời phản hồi.
+- 📸 **Tích Hợp Agent Skill (`send-to-telegram`)**: Cung cấp skill cho Agent để khi bạn yêu cầu "chụp màn hình gửi cho tôi" hoặc "tìm file/ảnh trong project gửi qua telegram", agent có thể chụp ảnh (macOS/Android) hoặc tìm file và bắn ngay về Telegram.
 - 🛡️ **Lọc Subagent & Chống Spam**: Tự động bỏ qua các sự kiện từ subagent chạy ngầm để tránh bắn thông báo rác; tích hợp bộ đệm thời gian (debounce mặc định 3 giây) chống gửi lặp.
 - ⚡ **Zero-Dependency & Non-Blocking**: Chạy hoàn toàn bằng thư viện chuẩn của Python 3 (`urllib`, `json`, `subprocess`, `html`). Không cần `pip install`. Tốc độ thực thi cực nhanh (< 0.5 giây), không gây trễ cho agent.
 
@@ -22,16 +23,19 @@ Công cụ được thiết kế để đăng ký trực tiếp vào **vòng đ�
 
 ```text
 agent-telegram-notifier/
-├── .env                  # Thông tin cấu hình Bot Telegram (được gitignore bảo vệ)
-├── .env.example          # File mẫu cấu hình biến môi trường
-├── notify.py             # Bộ xử lý trung tâm (nhận diện git, đọc transcript, gửi Telegram API)
-├── notify.sh             # Script shell wrapper để các agent hook gọi ngầm
-├── test_notification.py  # Script kiểm tra kết nối tới Telegram Bot
-├── install.py            # Script tự động đăng ký Native Hooks vào các agent
-├── install.sh            # Tiện ích gọi nhanh install.py
-├── agent_notifier.log    # File nhật ký hoạt động (được gitignore bảo vệ)
-├── README.md             # Tài liệu tiếng Anh
-└── README-vi.md          # Tài liệu tiếng Việt (file này)
+├── .env                          # Thông tin cấu hình Bot Telegram (được gitignore bảo vệ)
+├── .env.example                  # File mẫu cấu hình biến môi trường
+├── notify.py                     # Bộ xử lý trung tâm (nhận diện git, đọc transcript, gửi Telegram API & Files)
+├── notify.sh                     # Script shell wrapper để các agent hook gọi ngầm
+├── test_notification.py          # Script kiểm tra kết nối tới Telegram Bot
+├── install.py                    # Script tự động đăng ký Native Hooks & Skills vào các agent
+├── install.sh                    # Tiện ích gọi nhanh install.py
+├── skills/
+│   └── send-to-telegram/
+│       └── SKILL.md              # Skill chụp màn hình, tìm file và gửi tới Telegram
+├── agent_notifier.log            # File nhật ký hoạt động (được gitignore bảo vệ)
+├── README.md                     # Tài liệu tiếng Anh
+└── README-vi.md                  # Tài liệu tiếng Việt (file này)
 ```
 
 ---
