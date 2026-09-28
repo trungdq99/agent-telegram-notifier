@@ -4,12 +4,12 @@
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Find suitable python3
+# Find suitable python3 (prioritize mcp_servers conda env with all dependencies)
 PYTHON_BIN=""
-if [ -x "/opt/homebrew/bin/python3" ]; then
-    PYTHON_BIN="/opt/homebrew/bin/python3"
-elif [ -n "$HOME" ] && [ -x "$HOME/miniconda3/envs/mcp_servers/bin/python" ]; then
+if [ -n "$HOME" ] && [ -x "$HOME/miniconda3/envs/mcp_servers/bin/python" ]; then
     PYTHON_BIN="$HOME/miniconda3/envs/mcp_servers/bin/python"
+elif [ -x "/opt/homebrew/bin/python3" ]; then
+    PYTHON_BIN="/opt/homebrew/bin/python3"
 elif [ -n "$HOME" ] && [ -x "$HOME/miniconda3/bin/python3" ]; then
     PYTHON_BIN="$HOME/miniconda3/bin/python3"
 elif command -v python3 >/dev/null 2>&1; then

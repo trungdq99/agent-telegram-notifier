@@ -50,6 +50,11 @@ def load_env(env_path=None):
         "TELEGRAM_CHAT_ID": os.environ.get("TELEGRAM_CHAT_ID", ""),
         "TELEGRAM_THREAD_ID": os.environ.get("TELEGRAM_THREAD_ID", ""),
         "DEBOUNCE_SECONDS": os.environ.get("DEBOUNCE_SECONDS", "3"),
+        "GDRIVE_THRESHOLD_MB": os.environ.get("GDRIVE_THRESHOLD_MB", "10"),
+        "GDRIVE_CLIENT_SECRETS_FILE": os.environ.get("GDRIVE_CLIENT_SECRETS_FILE", ""),
+        "GDRIVE_TOKEN_FILE": os.environ.get("GDRIVE_TOKEN_FILE", ""),
+        "GDRIVE_SERVICE_ACCOUNT_FILE": os.environ.get("GDRIVE_SERVICE_ACCOUNT_FILE", ""),
+        "GDRIVE_FOLDER_ID": os.environ.get("GDRIVE_FOLDER_ID", ""),
     }
     
     if os.path.exists(env_path):
@@ -383,15 +388,75 @@ def build_multipart(fields, files):
     parts.append(f"--{boundary}--\r\n".encode("utf-8"))
     return f"multipart/form-data; boundary={boundary}", b"".join(parts)
 
-def send_telegram_file(bot_token, chat_id, file_path, file_type="document", caption="", thread_id=None, timeout=15.0):
-    """Send photo or document via Telegram Bot API using urllib (zero dependencies)."""
+def build_gdrive_file_message(filename, size_formatted, drive_link, caption=""):
+    """Build clean, formatted HTML notification message when a large file is uploaded to Google Drive."""
+    now_str = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+    lines = [
+        "☁️ <b>File Dung Lượng Lớn Đã Tải Lên Google Drive!</b>",
+        "",
+        f"📁 <b>Tên file:</b> <code>{html.escape(filename)}</code>",
+        f"📊 <b>Kích thước:</b> <code>{html.escape(size_formatted)}</code> <i>(Vượt ngưỡng 10MB)</i>",
+        f"🔗 <b>Link Google Drive:</b> <a href=\"{drive_link}\">Xem và tải file tại đây</a>",
+    ]
+    if caption:
+        lines.append(f"📝 <b>Mô tả:</b> {caption}")
+    lines.append(f"⏰ <b>Thời gian:</b> {now_str}")
+    return "\n".join(lines)
+
+def send_telegram_file(bot_token, chat_id, file_path, file_type="document", caption="", thread_id=None, timeout=15.0, config=None, force_gdrive=False, gdrive_threshold=None):
+    """
+    Send photo or document via Telegram Bot API or Google Drive for large files (> 10MB).
+    - If file_size > threshold (default 10MB) or force_gdrive is True:
+        Uploads file to Google Drive and sends formatted Telegram message with shareable link.
+    - Else:
+        Dispatches file directly via Telegram Bot API (sendPhoto or sendDocument).
+    """
     if not bot_token or not chat_id:
         return False, "Thiếu TELEGRAM_BOT_TOKEN hoặc TELEGRAM_CHAT_ID trong .env"
     if not os.path.exists(file_path):
         return False, f"File không tồn tại: {file_path}"
 
-    lower_path = file_path.lower()
     file_size = os.path.getsize(file_path)
+
+    # Determine threshold (default 10 MB)
+    if gdrive_threshold is not None:
+        threshold_mb = float(gdrive_threshold)
+    elif config and config.get("GDRIVE_THRESHOLD_MB"):
+        try:
+            threshold_mb = float(config.get("GDRIVE_THRESHOLD_MB"))
+        except (ValueError, TypeError):
+            threshold_mb = 10.0
+    else:
+        threshold_mb = 10.0
+
+    threshold_bytes = int(threshold_mb * 1024 * 1024)
+
+    # Route to Google Drive if size exceeds threshold or forced
+    if force_gdrive or file_size > threshold_bytes:
+        logging.info(
+            f"File '{file_path}' ({file_size} bytes) exceeds threshold ({threshold_bytes} bytes). "
+            f"Uploading to Google Drive..."
+        )
+        try:
+            from gdrive import upload_file_to_drive, format_size
+            dest_folder = config.get("GDRIVE_FOLDER_ID") if config else None
+            res = upload_file_to_drive(file_path, config=config, folder_id=dest_folder)
+            if not res.get("ok"):
+                err_msg = res.get("error", "Unknown Google Drive error")
+                logging.error(f"Google Drive upload failed: {err_msg}")
+                return False, f"Upload Google Drive thất bại: {err_msg}"
+
+            drive_link = res.get("share_link") or res.get("web_view_link")
+            size_formatted = res.get("size_formatted", format_size(file_size))
+            filename = res.get("filename", os.path.basename(file_path))
+
+            msg_html = build_gdrive_file_message(filename, size_formatted, drive_link, caption)
+            return send_telegram(bot_token, chat_id, msg_html, thread_id=thread_id, timeout=timeout)
+        except Exception as e:
+            logging.exception(f"Error handling Google Drive upload: {e}")
+            return False, f"Lỗi Google Drive: {e}"
+
+    lower_path = file_path.lower()
     # Telegram photo constraints: must be photo format and <= 10MB
     if file_type == "photo":
         if lower_path.endswith(".svg") or file_size > 10 * 1024 * 1024:
@@ -548,6 +613,9 @@ def main():
     parser.add_argument("--send-photo", help="Send a photo directly via Telegram")
     parser.add_argument("--send-file", "--send-doc", dest="send_file", help="Send a document or file directly via Telegram")
     parser.add_argument("--caption", default="", help="Caption for photo or file")
+    parser.add_argument("--setup-gdrive", action="store_true", help="Interactive OAuth 2.0 setup for Google Drive")
+    parser.add_argument("--force-gdrive", action="store_true", help="Force upload to Google Drive regardless of file size")
+    parser.add_argument("--gdrive-threshold", type=float, help="File size threshold in MB for Google Drive upload (default: 10)")
     args = parser.parse_args()
 
     config = load_env(args.env_file)
@@ -556,12 +624,26 @@ def main():
     thread_id = config.get("TELEGRAM_THREAD_ID")
     min_interval = float(config.get("DEBOUNCE_SECONDS", "3"))
 
+    # Interactive Google Drive OAuth setup
+    if args.setup_gdrive:
+        try:
+            from gdrive import setup_gdrive_oauth
+            setup_gdrive_oauth(config)
+            sys.exit(0)
+        except Exception as e:
+            print(f"❌ Lỗi cấu hình Google Drive: {e}")
+            sys.exit(1)
+
     # Direct photo sending mode
     if args.send_photo:
         caption = args.caption
         if not caption:
             caption = f"🖼️ <b>{html.escape(os.path.basename(args.send_photo))}</b>"
-        ok, res = send_telegram_file(bot_token, chat_id, args.send_photo, file_type="photo", caption=caption, thread_id=thread_id)
+        ok, res = send_telegram_file(
+            bot_token, chat_id, args.send_photo,
+            file_type="photo", caption=caption, thread_id=thread_id,
+            config=config, force_gdrive=args.force_gdrive, gdrive_threshold=args.gdrive_threshold
+        )
         if ok:
             print(f"✅ Gửi ảnh thành công: {args.send_photo}")
             sys.exit(0)
@@ -574,7 +656,11 @@ def main():
         caption = args.caption
         if not caption:
             caption = f"📄 <b>{html.escape(os.path.basename(args.send_file))}</b>"
-        ok, res = send_telegram_file(bot_token, chat_id, args.send_file, file_type="document", caption=caption, thread_id=thread_id)
+        ok, res = send_telegram_file(
+            bot_token, chat_id, args.send_file,
+            file_type="document", caption=caption, thread_id=thread_id,
+            config=config, force_gdrive=args.force_gdrive, gdrive_threshold=args.gdrive_threshold
+        )
         if ok:
             print(f"✅ Gửi file thành công: {args.send_file}")
             sys.exit(0)

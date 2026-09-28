@@ -7,6 +7,11 @@ description: Use when asked to capture screenshots, find files or images in the 
 
 This skill enables AI coding agents (Antigravity, Claude Code, Grok, etc.) to capture screenshots, locate files/images in the project, and instantly dispatch them to the user's Telegram Bot.
 
+> [!NOTE]
+> **Dung lượng & Google Drive Integration**:
+> - File **$\le$ 10MB**: Gửi trực tiếp qua Telegram API (`sendPhoto` cho ảnh hoặc `sendDocument` cho tài liệu/code).
+> - File **> 10MB**: Công cụ tự động upload file lên **Google Drive**, phân quyền truy cập đọc công khai và gửi đường link xem/tải trực tiếp kèm dung lượng file về Telegram Bot.
+
 ## Trigger Scenarios
 Activate this skill whenever the user requests:
 - "Chụp màn hình gửi cho tôi" / "Chụp ảnh màn hình gửi qua telegram" / "Take screenshot and send to me"
@@ -17,7 +22,7 @@ Activate this skill whenever the user requests:
 
 ## 🛠️ CLI Dispatch Tool
 
-All deliveries are handled by the lightweight, zero-dependency notifier wrapper:
+All deliveries are handled by the lightweight notifier wrapper:
 `NOTIFY_BIN="/Users/trungshin/development/agent-telegram-notifier/notify.sh"`
 
 ### 1. Send a Photo / Image
@@ -27,16 +32,35 @@ Use `--send-photo` with an optional `--caption`:
   --send-photo "/path/to/image.png" \
   --caption "🖼️ <b>Mô tả hình ảnh</b>"
 ```
-*(Supports PNG, JPG, JPEG, WEBP, GIF. If SVG or >10MB, the tool automatically routes as a document).*
+*(Supports PNG, JPG, JPEG, WEBP, GIF. If SVG, routes as a document. If >10MB, automatically uploads to Google Drive and sends link).*
 
-### 2. Send a Document / Code / File
+### 2. Send a Document / Code / Large File
 Use `--send-file` (or `--send-doc`) with an optional `--caption`:
 ```bash
 /bin/sh /Users/trungshin/development/agent-telegram-notifier/notify.sh \
   --send-file "/path/to/document.md" \
   --caption "📄 <b>Kế hoạch triển khai</b>"
 ```
-*(Supports any file type: `.md`, `.pdf`, `.txt`, `.json`, `.dart`, `.py`, etc. up to 50MB).*
+*(Supports any file type. If file > 10MB, the tool automatically uploads it to Google Drive and dispatches the drive link to Telegram).*
+
+### 3. Google Drive Options
+- **One-time Setup / Login**:
+  ```bash
+  /bin/sh /Users/trungshin/development/agent-telegram-notifier/notify.sh --setup-gdrive
+  ```
+- **Force Google Drive upload** (regardless of file size):
+  ```bash
+  /bin/sh /Users/trungshin/development/agent-telegram-notifier/notify.sh \
+    --send-file "/path/to/file.zip" \
+    --force-gdrive \
+    --caption "📦 File quan trọng lưu trên Google Drive"
+  ```
+- **Custom threshold**:
+  ```bash
+  /bin/sh /Users/trungshin/development/agent-telegram-notifier/notify.sh \
+    --send-file "/path/to/file.zip" \
+    --gdrive-threshold 5
+  ```
 
 ---
 
@@ -79,9 +103,9 @@ If using `conpet` or `browser-skill`, capture the tab/page to a file, then call 
    ```bash
    find . -type f -name "*keyword*"
    ```
-2. **Determine file type**:
-   - If image (`.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`): use `--send-photo`.
-   - If document or code (`.md`, `.pdf`, `.dart`, `.py`, `.json`, etc.): use `--send-file`.
+2. **Determine file type & size**:
+   - If image (`.png`, `.jpg`, `.jpeg`, `.webp`, `.gif`) $\le$ 10MB: use `--send-photo`.
+   - If document, code, archive, or any file > 10MB: use `--send-file` (automatically routes to Google Drive if >10MB).
 3. **Dispatch to Telegram**:
    ```bash
    /bin/sh /Users/trungshin/development/agent-telegram-notifier/notify.sh \

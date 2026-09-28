@@ -2,3 +2,9 @@
 .cache/
 __pycache__/
 *.log
+*.token.json
+*token*.json
+client_secret*.json
+credentials*.json
+service_account*.json
+.gdrive_token.json

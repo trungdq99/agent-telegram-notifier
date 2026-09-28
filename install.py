@@ -470,6 +470,28 @@ def show_status():
     print("=" * 65)
     skill_stat = "✅ ĐÃ CÀI ĐẶT" if (os.path.exists(AGENTS_SKILL_TARGET) or os.path.exists(GEMINI_SKILL_TARGET)) else "❌ CHƯA CÀI ĐẶT"
     print(f"  send-to-telegram: {skill_stat} (~/.agents/skills & ~/.gemini/config/skills)")
+
+    print("\n" + "=" * 65)
+    print("☁️ 4. GOOGLE DRIVE UPLOAD (Hỗ trợ file dung lượng > 10MB)")
+    print("=" * 65)
+    try:
+        from gdrive import get_service_account_path, get_token_file_path, find_client_secrets_file
+        from notify import load_env
+        cfg = load_env()
+        sa = get_service_account_path(cfg)
+        tok = get_token_file_path(cfg)
+        cs = find_client_secrets_file(cfg)
+        if sa and os.path.exists(sa):
+            gd_stat = f"✅ ĐÃ CẤU HÌNH (Service Account: {os.path.basename(sa)})"
+        elif tok and os.path.exists(tok):
+            gd_stat = f"✅ ĐÃ CẤU HÌNH (OAuth 2.0 Token: {os.path.basename(tok)})"
+        elif cs:
+            gd_stat = f"⚠️ CẦN XÁC THỰC (Đã tìm thấy {os.path.basename(cs)}, chạy --setup-gdrive)"
+        else:
+            gd_stat = "❌ CHƯA CẤU HÌNH (Cần client_secrets.json hoặc service_account.json)"
+    except Exception as e:
+        gd_stat = f"⚠️ Lỗi kiểm tra: {e}"
+    print(f"  Google Drive   : {gd_stat}")
     print("=" * 65 + "\n")
 
 def main():
@@ -477,7 +499,14 @@ def main():
     parser.add_argument("--install", action="store_true", help="Install hooks and skills into agents and Orca")
     parser.add_argument("--uninstall", action="store_true", help="Uninstall all hooks and skills")
     parser.add_argument("--status", action="store_true", help="Show current installation status")
+    parser.add_argument("--setup-gdrive", action="store_true", help="Setup Google Drive OAuth 2.0 authentication")
     args = parser.parse_args()
+
+    if args.setup_gdrive:
+        from gdrive import setup_gdrive_oauth
+        from notify import load_env
+        setup_gdrive_oauth(load_env())
+        sys.exit(0)
 
     if args.uninstall:
         print("\n⏳ Đang gỡ bỏ Telegram Notifier hooks & skills...")
@@ -514,9 +543,10 @@ def main():
     else:
         show_status()
         print("💡 Cách sử dụng:")
-        print("   python3 install.py --install     : Cài đặt hook vào tất cả các agent (Native + Orca)")
-        print("   python3 install.py --uninstall   : Gỡ bỏ hook khỏi tất cả các agent")
-        print("   python3 install.py --status      : Xem trạng thái hiện tại\n")
+        print("   python3 install.py --install       : Cài đặt hook vào tất cả các agent (Native + Orca)")
+        print("   python3 install.py --uninstall     : Gỡ bỏ hook khỏi tất cả các agent")
+        print("   python3 install.py --setup-gdrive  : Đăng nhập cấp quyền Google Drive cho file > 10MB")
+        print("   python3 install.py --status        : Xem trạng thái hiện tại\n")
 
 if __name__ == "__main__":
     main()
